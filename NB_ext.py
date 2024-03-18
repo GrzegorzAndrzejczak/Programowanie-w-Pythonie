@@ -1,5 +1,3 @@
-# from typing import List
-
 import numpy as np
 from numbers import Number
 from sklearn.preprocessing import OrdinalEncoder, LabelBinarizer
@@ -28,9 +26,6 @@ class OrdinalNanEncoder(OrdinalEncoder):        # Dopuszcza nan's dla uczących 
         self.handle_unknown = 'use_encoded_value'
         return super().transform(X)
 
-# eNc = OrdinalNanEncoder()
-# X50 = eNc.fit_transform(Xc[:50])
-
 
 class CategoricalNanNB(CategoricalNB):
     enc: OrdinalNanEncoder
@@ -54,7 +49,7 @@ class CategoricalNanNB(CategoricalNB):
         for j in range(self.n_features_in_):
             cat = enc.categories_[j][-1]
             if isinstance(cat, Number) and np.isnan(cat):       # pomijamy "nan", zostają  None - jeśli są
-                enc.categories_[j] = enc.categories_[j][:-1]    # można usunąć końce z nan, ale...
+                enc.categories_[j] = enc.categories_[j][:-1]    # można usunąć końce z nan ...
         self._count(X, y)
 
     def _count(self, X, y):
@@ -95,7 +90,6 @@ class CategoricalNanNB(CategoricalNB):
         return jll - log_prob[:, None]
 
     def predict(self, Z):
-        # log_prob = self.predict_log_proba(Z)
         prob = self.predict_proba(Z)
         return self.classes_.take(prob.argmax(1))
 
@@ -110,7 +104,6 @@ class MixedNB(ClassifierMixin, BaseEstimator):
     def __init__(self, classifier, cat_nb=None):
         self.classifier = classifier        # obiekt, nie klasa
         if cat_nb: self.claNB = cat_nb
-        # self._fit = self.claNB._fit
         self.n_classes, self.n_features = 2, 0
 
     def fit(self, X, y, nums: list[int] = None, **kwargs):      # raz wpisana maska staje się domyślna
@@ -121,20 +114,19 @@ class MixedNB(ClassifierMixin, BaseEstimator):
             self.cmask = ~nmask
         else:
             nmask = ~self.cmask
-        Xc, Xg = X[:, ~nmask], X[:, nmask]     # nominal, numeric(gaussian?)
+        Xc, Xn = X[:, ~nmask], X[:, nmask]     # nominal, numeric(gaussian?)
         claNB = self.claNB
         claNB.fit(Xc, y)
         self.n_classes = self.claNB.classes_.size
-        # n_features = self.n_features
         cla = self.classifier
-        cla.fit(Xg, y)
+        cla.fit(Xn, y)
 
     def predict_log_proba(self, Z):
         Zc = Z[:, self.cmask]
-        Zg = Z[:, ~self.cmask]
+        Zn = Z[:, ~self.cmask]
         clp_c = self.claNB.cond_log_proba(Zc)  # sum(log P_NB(x|c))
-        log_pr_g = self.classifier.predict_log_proba(Zg)  # log P_LR(c|x)
-        cll = clp_c + log_pr_g
+        log_pr_n = self.classifier.predict_log_proba(Zn)  # log P_LR(c|x)
+        cll = clp_c + log_pr_n
         # normalize by sumexp
         from scipy.special import logsumexp
         log_prob_rel = logsumexp(cll, axis=1)
@@ -147,32 +139,6 @@ class MixedNB(ClassifierMixin, BaseEstimator):
         res = self.predict_proba(Z)
         y_pred = self.claNB.classes_.take(res.argmax(1))
         return y_pred
-
-
-# def _init_counters(self, n_classes, n_features):
-#     self.class_count_ = np.zeros(n_classes, dtype=np.float64)
-#     self.category_count_ = [np.zeros((n_classes, 0)) for _ in range(n_features)]
-#                             # na razie PUSTE, będą zera? kolumny się pojawią
-# # dla
-# # n_categories = []   # [enc.categories_[i].shape[0] for i in range(nc_features)]
-#
-#
-# def _update_cat_count(X_feature, Y, cat_count, n_classes):
-#     for j in range(n_classes):
-#         mask = Y[:, j].astype(bool)     # lub (y==class[j])
-#         counts = np.bincount(X_feature[mask])   # , weights=weights)
-#         indices = np.nonzero(counts)[0]
-#         cat_count[j, indices] += counts[indices]
-#
-#
-# def _joint_log_likelihood(self, X):
-#     self._check_n_features(X, reset=False)
-#     jll = np.zeros((X.shape[0], self.class_count_.shape[0]))
-#     for i in range(self.n_features_in_):
-#         indices = X[:, i]
-#         jll += self.feature_log_prob_[i][:, indices].T
-#     total_ll = jll + self.class_log_prior_
-#     return total_ll
 
 
 def xStratification(y, n_splits=10, rand=np.random.default_rng(), alloc=False):
@@ -200,22 +166,14 @@ def xStratification(y, n_splits=10, rand=np.random.default_rng(), alloc=False):
 def xValidation(clf, X, y, test_folds):     # , coeff=False):
     n_splits = max(test_folds) + 1
     y_prob = np.empty(X.shape[0], dtype="f")  # the array of probabilities
-    # if coeff:
-    #     coef_m = np.zeros(X.shape[1] + 1, dtype="f")
     for i in range(n_splits):  # i-th portion
         mask_i = test_folds == i
         test_index = np.where(mask_i)[0]
         train_index = np.where(~mask_i)[0]
 
-
         nn = clf.fit(X[train_index], y[train_index])  # as classifies do
         y_prob_i = clf.predict_proba(X[test_index])[:, 1]
         y_prob[test_folds == i] = y_prob_i
-    #     if coeff:
-    #         coef = clf.coef_.base[0][0]
-    #         coef_m += coef
-    # if coeff:
-    #     return y_prob, coef_m / n_splits
     return y_prob
 
 
